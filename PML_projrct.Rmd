@@ -1,0 +1,148 @@
+---
+title: "Practical machine learning project"
+author: "pradnya chavan"
+date: "February 13, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+Groupware@LES collects large amount of physical activity data from wearable devices like jawbone,Nike fule, etc.These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+
+
+## Goal
+We will be using this data for this project in order to predict class of activities 
+(sitting-down, standing-up, standing, walking, and sitting).
+
+
+## Input data
+We downloaded data in the csv format from the following  sources
+
+### Training data
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+### Test data
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Reading Input data
+
+```{r}
+m_train<- data.frame(read.csv(file="pml-training.csv",head=TRUE,sep=","))
+m_test<- data.frame(read.csv(file="pml-testing.csv",head=TRUE,sep=","))
+```
+
+
+## Data Exploration
+Taking look at the summary of the data and highly correlated variables.
+```{r}
+summary(m_train)
+corr<-abs(cor(m_train[,unlist(lapply(m_train, is.numeric))]))
+diag(corr)<-0
+which(corr>0.8,arr.ind = T)
+```
+
+## Feature Selection
+
+As we notice there are many variable which has more than 50% of the values NULL and NA. For further processing We will be considering only those which have correlation higher than 0.8 and without NA/NULL values.
+```{r}
+
+sub_train<-data.frame(m_train[,c('num_window','roll_belt','pitch_belt','yaw_belt','total_accel_belt','gyros_belt_x','gyros_belt_y','gyros_belt_z','accel_belt_x',
+'accel_belt_y','accel_belt_z','magnet_belt_x','magnet_belt_y','magnet_belt_z','roll_arm','pitch_arm','yaw_arm','total_accel_arm',
+'gyros_arm_x','gyros_arm_y', 'gyros_arm_z','accel_arm_x','accel_arm_y','accel_arm_z','magnet_arm_y','magnet_arm_z','roll_dumbbell',
+'pitch_dumbbell','yaw_dumbbell',
+'total_accel_dumbbell','gyros_dumbbell_x','gyros_dumbbell_y','gyros_dumbbell_z','accel_dumbbell_x',
+'accel_dumbbell_y','accel_dumbbell_z','magnet_dumbbell_x','magnet_dumbbell_y','magnet_dumbbell_z','roll_forearm','pitch_forearm',
+'yaw_forearm','total_accel_forearm','gyros_forearm_x','gyros_forearm_y','gyros_forearm_z','accel_forearm_x','accel_forearm_y',
+'accel_forearm_z','magnet_forearm_x','magnet_forearm_y','magnet_forearm_z','classe')])
+
+
+test<-data.frame(m_test[,c('num_window','roll_belt','pitch_belt','yaw_belt','total_accel_belt','gyros_belt_x','gyros_belt_y','gyros_belt_z','accel_belt_x',
+'accel_belt_y','accel_belt_z','magnet_belt_x','magnet_belt_y','magnet_belt_z','roll_arm','pitch_arm','yaw_arm','total_accel_arm',
+'gyros_arm_x','gyros_arm_y', 'gyros_arm_z','accel_arm_x','accel_arm_y','accel_arm_z','magnet_arm_y','magnet_arm_z','roll_dumbbell',
+'pitch_dumbbell','yaw_dumbbell',
+'total_accel_dumbbell','gyros_dumbbell_x','gyros_dumbbell_y','gyros_dumbbell_z','accel_dumbbell_x',
+'accel_dumbbell_y','accel_dumbbell_z','magnet_dumbbell_x','magnet_dumbbell_y','magnet_dumbbell_z','roll_forearm','pitch_forearm',
+'yaw_forearm','total_accel_forearm','gyros_forearm_x','gyros_forearm_y','gyros_forearm_z','accel_forearm_x','accel_forearm_y',
+'accel_forearm_z','magnet_forearm_x','magnet_forearm_y','magnet_forearm_z')])
+```
+
+Making sure there are no variables with zero variance.
+
+```{r}
+library(caret)
+nsv <- nearZeroVar(sub_train, saveMetrics=TRUE)
+nsv
+```
+
+
+
+## Data Splitting
+Splitting input training data into 2 datasets: training-60% and validation-40%
+
+```{r}
+require(caTools)
+sample = sample.split(sub_train$classe, SplitRatio = .60)
+train = subset(sub_train, sample == TRUE)
+valid = subset(sub_train, sample == FALSE)
+```
+
+## Fitting Model
+### Classification tree
+
+```{r}
+library(rpart)
+modelfit_tree<-train(classe ~.,method="rpart",data=train)
+valid_tree<-predict(modelfit_tree,newdata=valid)
+confusionMatrix(valid_tree,valid$classe)
+```
+
+```{r, echo=FALSE}
+library(rattle)
+fancyRpartPlot(modelfit_tree$finalModel)
+```
+
+
+### KNN
+
+```{r}
+modelfit_knn<-train(classe ~.,method="knn",data=train,
+                    trControl = trainControl(method = "adaptive_cv"))
+valid_knn<-predict(modelfit_knn,newdata=valid)
+confusionMatrix(valid_knn,valid$classe)
+```
+
+
+### Random Forest
+
+```{r}
+library(randomForest)
+
+modFit_prerf <- randomForest(classe ~. ,preProcess=c("center","scale"),trControl=trainControl(method = "cv", number = 4), data=train)
+valid_prerf <- predict(modFit_prerf,valid, type = "class")
+confusionMatrix(valid_prerf, valid$classe)
+```
+
+
+## Assessing Models
+
+Accuracy of Random forest model is highest of all-- 99%. 
+```{r}
+Accu <- matrix(c("modFit_tree-CART",0.4974,"modFit_knn-KNN",0.9194,"modFit_prerf-Random Forest",0.9968),ncol=2,byrow=TRUE)
+colnames(Accu) <- c("Model","Accuracy")
+Accu<-as.table(Accu)
+Accu
+
+```
+
+ 
+## Application
+
+Applying "modFit_prerf" model on 20 test cases.
+
+```{r}
+prediction <- predict(modFit_prerf,test, type = "class")
+print(prediction)
+```
